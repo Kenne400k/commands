@@ -1,13 +1,13 @@
 const axios = require('axios');
 const fs = require('fs');
 
-const GEMINI_API_KEY = "AIzaSyDV4U_yYa9i-4LGQmoh_qTaFmJR0HJnFcQ"; // Thay bằng API key của mày
+const GEMINI_API_KEY = "AIzaSyDV4U_yYa9i-4LGQmoh_qTaFmJR0HJnFcQ";
 const PATH = __dirname + "/data/bot.json";
 let data = {};
 
-// Đọc dữ liệu từ file JSON, nếu không có thì tạo mới
+// Đọc dữ liệu từ file JSON, nếu chưa có thì tạo mới
 if (!fs.existsSync(PATH)) {
-    fs.writeFileSync(PATH, JSON.stringify({ learn: true, conversations: {} }));
+    fs.writeFileSync(PATH, JSON.stringify({ conversations: {} }));
 }
 data = JSON.parse(fs.readFileSync(PATH));
 
@@ -17,49 +17,40 @@ const saveData = () => fs.writeFileSync(PATH, JSON.stringify(data, null, 2));
 module.exports = {
     config: {
         name: "sim",
-        version: "2.0.0",
+        version: "3.0.0",
         hasPermission: 1,
         credits: "Pcoder",
-        description: "Chatbot AI tự học hỏi",
+        description: "Chatbot AI kết hợp Gemini",
         commandCategory: "No prefix",
         usages: "",
         cooldowns: 1,
     },
 
-    run: ({ event, api }) => {
-        let t = event.threadID;
-        data.learn = !data.learn;  // Bật/tắt chế độ học
-        saveData();
-        api.sendMessage(`✅ Chế độ học hỏi đã ${data.learn ? "BẬT" : "TẮT"}`, t);
-    },
-
     handleEvent: async function ({ event, api }) {
         if (event.senderID == api.getCurrentUserID()) return;
-        let { body, threadID, messageID, senderID } = event;
+        let { body, threadID, messageID } = event;
         if (!body) return;
 
-        // Kiểm tra xem bot có câu trả lời không
+        body = body.trim().toLowerCase(); // Chuẩn hóa input
+
+        // Kiểm tra bot đã biết chưa
         if (data.conversations[body]) {
             api.sendMessage(data.conversations[body], threadID, messageID);
             return;
         }
 
-        // Nếu không có, hỏi AI Gemini
+        // Hỏi Gemini nếu chưa có câu trả lời
         const response = await askGemini(body);
         if (response) {
+            data.conversations[body] = response;
+            saveData();
             api.sendMessage(response, threadID, messageID);
-
-            // Nếu chế độ học bật, lưu vào bot.json
-            if (data.learn) {
-                data.conversations[body] = response;
-                saveData();
-            }
         } else {
-            api.sendMessage("Tao chưa biết câu này, dạy tao đi! (Trả lời tin nhắn này với câu trả lời)", threadID, (err, info) => {
+            api.sendMessage("Tao không biết câu này, dạy tao đi!", threadID, (err, info) => {
                 global.client.handleReply.push({
                     name: this.config.name,
                     messageID: info.messageID,
-                    author: senderID,
+                    author: event.senderID,
                     question: body
                 });
             });
@@ -70,21 +61,23 @@ module.exports = {
         let { body, threadID, messageID, senderID } = event;
         if (handleReply.author !== senderID) return;
 
-        // Lưu câu trả lời vào bot.json
+        // Lưu câu trả lời vào data
         data.conversations[handleReply.question] = body;
         saveData();
         api.sendMessage("✅ Tao đã nhớ câu này!", threadID, messageID);
     }
 };
 
-// Hàm gọi API Gemini
+// Hàm hỏi Gemini với phản hồi ngắn gọn
 async function askGemini(text) {
     try {
         const response = await axios.post(
             `https://generativelanguage.googleapis.com/v1beta3/models/gemini-pro:generateText?key=${GEMINI_API_KEY}`,
             {
-                prompt: { text },
-                temperature: 0.7
+                prompt: {
+                    text: `Trả lời ngắn gọn nhất có thể cho câu sau: "${text}"`
+                },
+                temperature: 0.5
             }
         );
         return response.data.candidates?.[0]?.output || null;
