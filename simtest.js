@@ -9,7 +9,7 @@ let data = {};
 if (!fs.existsSync(PATH)) {
     fs.writeFileSync(PATH, JSON.stringify({ conversations: {} }, null, 2));
 }
-data = JSON.parse(fs.readFileSync(PATH, "utf-8"));
+data = JSON.parse(fs.readFileSync(PATH));
 
 // Hàm lưu dữ liệu
 const saveData = () => fs.writeFileSync(PATH, JSON.stringify(data, null, 2));
@@ -35,7 +35,8 @@ module.exports = {
 
         // Kiểm tra bot đã biết chưa
         if (data.conversations[body]) {
-            return api.sendMessage(data.conversations[body], threadID);
+            api.sendMessage(data.conversations[body], threadID, messageID);
+            return;
         }
 
         // Hỏi Gemini nếu chưa có câu trả lời
@@ -43,29 +44,27 @@ module.exports = {
         if (response) {
             data.conversations[body] = response;
             saveData();
-            return api.sendMessage(response, threadID);
-        }
-
-        // Nếu Gemini cũng không biết, yêu cầu người dùng dạy
-        api.sendMessage("Tao không biết câu này, dạy tao đi!", threadID, (err, info) => {
-            if (err) return console.error(err);
-            global.client.handleReply.push({
-                name: this.config.name,
-                messageID: info.messageID,
-                author: event.senderID,
-                question: body
+            api.sendMessage(response, threadID, messageID);
+        } else {
+            api.sendMessage("Tao không biết câu này, dạy tao đi!", threadID, (err, info) => {
+                global.client.handleReply.push({
+                    name: this.config.name,
+                    messageID: info.messageID,
+                    author: event.senderID,
+                    question: body
+                });
             });
-        });
+        }
     },
 
     handleReply: async function ({ event, api, handleReply }) {
-        let { body, threadID, senderID } = event;
+        let { body, threadID, messageID, senderID } = event;
         if (handleReply.author !== senderID) return;
 
         // Lưu câu trả lời vào data
         data.conversations[handleReply.question] = body;
         saveData();
-        api.sendMessage("✅ Tao đã nhớ câu này!", threadID);
+        api.sendMessage("✅ Tao đã nhớ câu này!", threadID, messageID);
     }
 };
 
@@ -73,20 +72,18 @@ module.exports = {
 async function askGemini(text) {
     try {
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateText?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
                 contents: [
-                    {
-                        role: "user",
-                        parts: [{ text: `Trả lời ngắn gọn nhất có thể cho câu sau: "${text}"` }]
-                    }
+                    { parts: [{ text: `Trả lời ngắn gọn nhất có thể cho câu sau: "${text}"` }] }
                 ]
-            }
+            },
+            { headers: { "Content-Type": "application/json" } }
         );
 
         return response.data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     } catch (err) {
-        console.error("Lỗi khi gọi Gemini:", err.response?.data || err.message);
+        console.error("Lỗi gọi API Gemini:", err.response?.data || err.message);
         return null;
     }
 }
