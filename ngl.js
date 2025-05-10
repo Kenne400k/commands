@@ -1,4 +1,7 @@
-// Import các module cần thiết
+//có thắc mắc gì liên hệ qua
+// fb.com/pcoder090
+// github.com/Kenne400k
+// cấm thay đổi credits
 const axios = require("axios");
 const fs = require('fs-extra');
 const path = require('path');
