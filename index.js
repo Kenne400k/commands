@@ -1,50 +1,46 @@
-// ====== CLEAR CONSOLE ======
-console.clear();
-
-/*
- * ====== VERSION AUTO-CHECK & AUTO-UPDATE ======
- * Nếu version trên github > version local thì tự động update file index.js của bạn
- */
-const LOCAL_VERSION = "1.0.0"; // <--- CẬP NHẬT version local ở đây!
+// ====== VERSION AUTO-CHECK & AUTO-UPDATE ======
+const LOCAL_VERSION = "1.0.0"; // <--- Đặt version local tại đây
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/refs/heads/main/index.js";
+
 const fs = require("fs");
 const axios = require("axios");
-const semver = require("semver"); // đảm bảo npm i semver
-
-// Trích version từ mã nguồn (từ dòng const LOCAL_VERSION = hoặc comment // version: x.y.z)
-function extractVersion(source) {
-  let match = source.match(/LOCAL_VERSION\s*=\s*["'`](\d+\.\d+\.\d+)["'`]/i);
-  if (match && match[1]) return match[1];
-  match = source.match(/version:\s*([0-9.]+)/i);
-  if (match && match[1]) return match[1];
-  return null;
+let semver;
+try { semver = require("semver"); } catch (e) {
+  console.log("\x1b[31m[ERROR]\x1b[0m Chưa cài module 'semver', hãy chạy: npm i semver");
+  process.exit(1);
 }
 
-async function checkAndAutoUpdate() {
+// ==== ĐỒNG BỘ CHECK VERSION NGAY ĐẦU FILE ====
+(async () => {
+  console.log("\x1b[36m[VERSION]\x1b[0m Đang kiểm tra phiên bản trên GitHub...");
   try {
     const { data: remoteSource } = await axios.get(GITHUB_RAW_URL, { timeout: 7000 });
-    const remoteVersion = extractVersion(remoteSource);
+    // Lấy version từ dòng LOCAL_VERSION
+    let m = remoteSource.match(/LOCAL_VERSION\s*=\s*["'`](\d+\.\d+\.\d+)["'`]/i);
+    const remoteVersion = m && m[1] ? m[1] : null;
+
     if (!remoteVersion) {
       console.log("\x1b[33m[UPDATE]\x1b[0m Không tìm thấy version trên GitHub, dùng tiếp version local.");
-      return;
-    }
-    if (semver.eq(LOCAL_VERSION, remoteVersion)) {
-      console.log("\x1b[32m[CHECK]\x1b[0m Đang sử dụng phiên bản mới nhất:", LOCAL_VERSION);
-      return;
-    }
-    if (semver.lt(LOCAL_VERSION, remoteVersion)) {
+    } else if (semver.eq(LOCAL_VERSION, remoteVersion)) {
+      console.log(`\x1b[32m[CHECK]\x1b[0m Đang sử dụng phiên bản mới nhất: ${LOCAL_VERSION}`);
+    } else if (semver.lt(LOCAL_VERSION, remoteVersion)) {
       console.log(`\x1b[36m[AUTO-UPDATE]\x1b[0m Đã phát hiện phiên bản mới: ${remoteVersion}. Đang cập nhật...`);
-      fs.writeFileSync('index.js', remoteSource, 'utf8');
+      fs.writeFileSync(__filename, remoteSource, 'utf8');
       console.log("\x1b[32m[SUCCESS]\x1b[0m Đã cập nhật lên phiên bản mới:", remoteVersion);
-      process.exit(1); // Thoát để tự restart
+      // Restart lại file (dùng child_process)
+      const { spawn } = require("child_process");
+      spawn(process.argv[0], [__filename, ...process.argv.slice(2)], {
+        stdio: "inherit"
+      });
+      process.exit(0);
     } else {
       console.log("\x1b[33m[INFO]\x1b[0m Phiên bản local mới hơn remote. Tiếp tục sử dụng local.");
     }
   } catch (e) {
     console.log("\x1b[31m[ERROR]\x1b[0m Không thể kiểm tra/cập nhật phiên bản mới:", e.message);
   }
-}
-checkAndAutoUpdate();
+
+
 
 /* ====== PHẦN CODE CHÍNH BÊN DƯỚI GIỮ NGUYÊN NHƯ BẠN ĐANG DÙNG (KHÔNG ĐỔI) ====== */
 const { spawn } = require("child_process");
@@ -115,6 +111,7 @@ function printBanner() {
   console.log(
     chalk.bgRed.white.bold(`  ${now}  `) +
     chalk.bgBlue.white.bold(`  Theme: 7 SẮC CẦU VỒNG  `) +
+    chalk.bgGreen.white.bold(`  Version: ${LOCAL_VERSION}  `) +
     chalk.bgYellow.black.bold(`  PID: ${process.pid}  `)
   );
   // Slogan, gạch chân
@@ -356,3 +353,4 @@ async function startb(){
   }
 }
 startb()
+})();
