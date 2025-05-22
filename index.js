@@ -1,5 +1,5 @@
 // ====== VERSION AUTO-CHECK & AUTO-UPDATE ======
-const LOCAL_VERSION = "1.0.0"; // <--- Đặt version local tại đây
+const LOCAL_VERSION = "2.0.0";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/refs/heads/main/index.js";
 
 const fs = require("fs");
