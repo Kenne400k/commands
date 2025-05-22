@@ -1,23 +1,17 @@
-// ====== VERSION AUTO-CHECK & AUTO-UPDATE ======
-const LOCAL_VERSION = "2.0.0";
+const LOCAL_VERSION = "1.0.0";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/refs/heads/main/index.js";
 
 const fs = require("fs");
 const axios = require("axios");
-let semver;
-try { semver = require("semver"); } catch (e) {
-  console.log("\x1b[31m[ERROR]\x1b[0m Chưa cài module 'semver', hãy chạy: npm i semver");
-  process.exit(1);
-}
+const semver = require("semver");
 
-// ==== ĐỒNG BỘ CHECK VERSION NGAY ĐẦU FILE ====
 (async () => {
   console.log("\x1b[36m[VERSION]\x1b[0m Đang kiểm tra phiên bản trên GitHub...");
   try {
     const { data: remoteSource } = await axios.get(GITHUB_RAW_URL, { timeout: 7000 });
-    // Lấy version từ dòng LOCAL_VERSION
     let m = remoteSource.match(/LOCAL_VERSION\s*=\s*["'`](\d+\.\d+\.\d+)["'`]/i);
     const remoteVersion = m && m[1] ? m[1] : null;
+    console.log("[DEBUG] Remote version extract:", remoteVersion);
 
     if (!remoteVersion) {
       console.log("\x1b[33m[UPDATE]\x1b[0m Không tìm thấy version trên GitHub, dùng tiếp version local.");
@@ -27,11 +21,8 @@ try { semver = require("semver"); } catch (e) {
       console.log(`\x1b[36m[AUTO-UPDATE]\x1b[0m Đã phát hiện phiên bản mới: ${remoteVersion}. Đang cập nhật...`);
       fs.writeFileSync(__filename, remoteSource, 'utf8');
       console.log("\x1b[32m[SUCCESS]\x1b[0m Đã cập nhật lên phiên bản mới:", remoteVersion);
-      // Restart lại file (dùng child_process)
       const { spawn } = require("child_process");
-      spawn(process.argv[0], [__filename, ...process.argv.slice(2)], {
-        stdio: "inherit"
-      });
+      spawn(process.argv[0], [__filename, ...process.argv.slice(2)], { stdio: "inherit" });
       process.exit(0);
     } else {
       console.log("\x1b[33m[INFO]\x1b[0m Phiên bản local mới hơn remote. Tiếp tục sử dụng local.");
