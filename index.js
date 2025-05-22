@@ -1,9 +1,53 @@
 // ====== CLEAR CONSOLE ======
 console.clear();
 
-const { spawn } = require("child_process");
+/*
+ * ====== VERSION AUTO-CHECK & AUTO-UPDATE ======
+ * Nếu version trên github > version local thì tự động update file index.js của bạn
+ */
+const LOCAL_VERSION = "1.0.0"; // <--- CẬP NHẬT version local ở đây!
+const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/refs/heads/main/index.js";
 const fs = require("fs");
 const axios = require("axios");
+const semver = require("semver"); // đảm bảo npm i semver
+
+// Trích version từ mã nguồn (từ dòng const LOCAL_VERSION = hoặc comment // version: x.y.z)
+function extractVersion(source) {
+  let match = source.match(/LOCAL_VERSION\s*=\s*["'`](\d+\.\d+\.\d+)["'`]/i);
+  if (match && match[1]) return match[1];
+  match = source.match(/version:\s*([0-9.]+)/i);
+  if (match && match[1]) return match[1];
+  return null;
+}
+
+async function checkAndAutoUpdate() {
+  try {
+    const { data: remoteSource } = await axios.get(GITHUB_RAW_URL, { timeout: 7000 });
+    const remoteVersion = extractVersion(remoteSource);
+    if (!remoteVersion) {
+      console.log("\x1b[33m[UPDATE]\x1b[0m Không tìm thấy version trên GitHub, dùng tiếp version local.");
+      return;
+    }
+    if (semver.eq(LOCAL_VERSION, remoteVersion)) {
+      console.log("\x1b[32m[CHECK]\x1b[0m Đang sử dụng phiên bản mới nhất:", LOCAL_VERSION);
+      return;
+    }
+    if (semver.lt(LOCAL_VERSION, remoteVersion)) {
+      console.log(`\x1b[36m[AUTO-UPDATE]\x1b[0m Đã phát hiện phiên bản mới: ${remoteVersion}. Đang cập nhật...`);
+      fs.writeFileSync('index.js', remoteSource, 'utf8');
+      console.log("\x1b[32m[SUCCESS]\x1b[0m Đã cập nhật lên phiên bản mới:", remoteVersion);
+      process.exit(1); // Thoát để tự restart
+    } else {
+      console.log("\x1b[33m[INFO]\x1b[0m Phiên bản local mới hơn remote. Tiếp tục sử dụng local.");
+    }
+  } catch (e) {
+    console.log("\x1b[31m[ERROR]\x1b[0m Không thể kiểm tra/cập nhật phiên bản mới:", e.message);
+  }
+}
+checkAndAutoUpdate();
+
+/* ====== PHẦN CODE CHÍNH BÊN DƯỚI GIỮ NGUYÊN NHƯ BẠN ĐANG DÙNG (KHÔNG ĐỔI) ====== */
+const { spawn } = require("child_process");
 const deviceID = require('uuid');
 const adid = require('uuid');
 const totp = require('totp-generator');
@@ -16,15 +60,9 @@ const theme = config.DESIGN?.Theme || "rainbow";
 
 // ===== 7 SẮC CẦU VỒNG ĐẶC BIỆT =====
 const rainbowArr = [
-  "#FF0000", // Đỏ
-  "#FF7F00", // Cam
-  "#FFFF00", // Vàng
-  "#00FF00", // Xanh lá
-  "#0000FF", // Xanh dương
-  "#4B0082", // Chàm
-  "#9400D3"  // Tím
+  "#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"
 ];
-
+const cfontsRainbow = [ 'red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white' ];
 const rainbowGradient = gradient(rainbowArr);
 
 // ====== LOGO CỰC ĐẸP + HIỆU ỨNG SHADOW ======
@@ -60,11 +98,11 @@ function printBanner() {
   // Border dưới
   console.log(border);
 
-  // PCODER/MIRAI BOT với font chrome hoặc shade cho cực chất
+  // MIRAI BOT với font chrome, màu classic
   CFonts.say('MIRAI BOT', {
-    font: 'chrome', // "chrome" hoặc "shade" hoặc "block"
+    font: 'chrome',
     align: 'center',
-    colors: rainbowArr.map(c => c.replace('#', '')), // dùng mã classic
+    colors: cfontsRainbow,
     background: 'transparent',
     letterSpacing: 2,
     lineHeight: 1,
@@ -111,7 +149,6 @@ function fancyLog(type, msg, tag = "") {
   }
   const tagStr = tag ? chalk.bgHex("#333").white.bold(` ${tag} `) : "";
   const t = chalk.gray(`[${moment().format("HH:mm:ss")}]`);
-  // Gạch chân cho tag lỗi
   if (type === "error") {
     console.log(t, icon, tagStr, chalk.red.underline.bold(msg));
   } else {
