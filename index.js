@@ -1,4 +1,3 @@
-
 // Xóa sạch terminal (tương thích đa nền tảng)
 process.stdout.write('\x1Bc');
 
@@ -10,45 +9,44 @@ const axios = require("axios");
 const semver = require("semver");
 const moment = require("moment-timezone");
 
-async function syncModulesOnlyAddNew() {
-  const MODULES_DIR = path.join(__dirname, "modules");
-  const REMOTE_LIST_URL = "https://api.github.com/repos/Kenne400k/k/contents/modules";
-  const GITHUB_RAW_PREFIX = "https://raw.githubusercontent.com/Kenne400k/k/main/modules/";
+// ======= ĐỒNG BỘ CHỈ THÊM MỚI TỪ GITHUB: commands & events =======
 
-  console.log(chalk.cyanBright(`[MODULES] Đang kiểm tra và đồng bộ modules mới từ GitHub...`));
+async function syncOnlyAddNew(localDir, githubDir) {
+  const REMOTE_LIST_URL = `https://api.github.com/repos/Kenne400k/k/contents/${githubDir}`;
+  const RAW_PREFIX = `https://raw.githubusercontent.com/Kenne400k/k/main/${githubDir}/`;
   try {
+    console.log(chalk.cyanBright(`[SYNC] Đang kiểm tra và đồng bộ file mới từ GitHub: ${githubDir}`));
+    if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
     const { data: remoteFiles } = await axios.get(REMOTE_LIST_URL, {
       headers: { 'User-Agent': 'mirai-bot-syncmodules' }
     });
-
     const remoteJsFiles = remoteFiles.filter(f => f.type === "file" && /\.(js|json|ts|cjs|mjs)$/i.test(f.name));
-
-    let localFiles = [];
-    if (fs.existsSync(MODULES_DIR)) {
-      localFiles = fs.readdirSync(MODULES_DIR).filter(f => /\.(js|json|ts|cjs|mjs)$/i.test(f));
-    } else {
-      fs.mkdirSync(MODULES_DIR, { recursive: true });
-    }
-
+    const localFiles = fs.readdirSync(localDir).filter(f => /\.(js|json|ts|cjs|mjs)$/i.test(f));
     let countAdded = 0;
     for (const remoteFile of remoteJsFiles) {
       if (!localFiles.includes(remoteFile.name)) {
-        const { data: remoteContent } = await axios.get(GITHUB_RAW_PREFIX + remoteFile.name, { responseType: 'arraybuffer' });
-        fs.writeFileSync(path.join(MODULES_DIR, remoteFile.name), Buffer.from(remoteContent));
-        console.log(chalk.greenBright(`[MODULES] Đã thêm mới: ${remoteFile.name}`));
+        const { data: remoteContent } = await axios.get(RAW_PREFIX + remoteFile.name, { responseType: 'arraybuffer' });
+        fs.writeFileSync(path.join(localDir, remoteFile.name), Buffer.from(remoteContent));
+        console.log(chalk.greenBright(`[SYNC] Đã thêm mới: ${remoteFile.name}`));
         countAdded++;
       }
     }
-
     if (countAdded === 0) {
-      console.log(chalk.yellowBright(`[MODULES] Không có modules mới nào cần tải.`));
+      console.log(chalk.yellowBright(`[SYNC] Không có file mới nào trong ${githubDir}.`));
     } else {
-      console.log(chalk.greenBright(`[MODULES] Đã đồng bộ xong ${countAdded} modules mới.`));
+      console.log(chalk.greenBright(`[SYNC] Đã đồng bộ xong ${countAdded} file mới từ ${githubDir}.`));
     }
   } catch (err) {
-    console.log(chalk.redBright(`[MODULES] Lỗi đồng bộ modules: ${err.message}`));
+    console.log(chalk.redBright(`[SYNC] Lỗi đồng bộ ${githubDir}: ${err.message}`));
   }
 }
+
+async function syncModulesAndEvents() {
+  await syncOnlyAddNew(path.join(__dirname, "modules", "commands"), "modules/commands");
+  await syncOnlyAddNew(path.join(__dirname, "modules", "events"), "modules/events");
+}
+
+// ============= KHỞI ĐỘNG GIAO DIỆN LOGO, QUẢNG CÁO, UPDATE... =============
 
 (async () => {
   // Dynamic import ESM modules (boxen, chalk-animation)
@@ -94,7 +92,7 @@ async function syncModulesOnlyAddNew() {
   );
 
   // Kiểm tra phiên bản
-  const LOCAL_VERSION = "2.0.0";
+  const LOCAL_VERSION = "3.0.0";
   const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/main/index.js";
   console.log(chalk.cyanBright(`[AUTO-UPDATE] Kiểm tra phiên bản trên GitHub...`));
   try {
@@ -121,8 +119,8 @@ async function syncModulesOnlyAddNew() {
     console.log(chalk.redBright(`[ERROR] Không thể kiểm tra/cập nhật phiên bản mới: ${e.message}`));
   }
 
-  // --- Đặt kiểm tra đồng bộ modules NGAY DƯỚI kiểm tra version ---
-  await syncModulesOnlyAddNew();
+  // ĐỒNG BỘ MODULES/COMMANDS & EVENTS CHỈ THÊM MỚI (KHÔNG XÓA)
+  await syncModulesAndEvents();
 
   // Thông tin trạng thái và slogan (bên trái)
   const now = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -136,7 +134,7 @@ async function syncModulesOnlyAddNew() {
   console.log(chalk.hex('#ff00cc').italic('MiraiBot | PCODER | Chúc bạn một ngày chạy bot vui vẻ!'));
   console.log(chalk.hex('#FFD700')('='.repeat(50)));
 
-  // Fancy Logger + Package/Module Check như cũ
+  // Fancy Logger + Package/Module Check
   const fancyLog = (type, msg, tag = "") => {
     let icons = { success: '✔', warn: '⚠', error: '✖', info: 'ℹ' };
     let colors = {
