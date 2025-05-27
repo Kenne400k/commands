@@ -9,33 +9,109 @@ const axios = require("axios");
 const semver = require("semver");
 const moment = require("moment-timezone");
 
-// ======= ĐỒNG BỘ CHỈ THÊM MỚI TỪ GITHUB: commands & events =======
+const CACHE_SUFFIX = ".sync-cache.json";
+
+// Đọc cache các file từng có ở local
+function readCache(cacheFile) {
+  if (!fs.existsSync(cacheFile)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+  } catch (e) {
+    return [];
+  }
+}
+
+// Ghi lại cache các file local đã có lần sync này
+function writeCache(cacheFile, files) {
+  try {
+    fs.writeFileSync(cacheFile, JSON.stringify(files), "utf8");
+  } catch (e) {}
+}
+
+async function downloadAndSave(remoteFile, RAW_PREFIX, localDir) {
+  try {
+    const { data: remoteContent } = await axios.get(RAW_PREFIX + remoteFile.name, { responseType: 'arraybuffer' });
+    fs.writeFileSync(path.join(localDir, remoteFile.name), Buffer.from(remoteContent));
+    console.log(chalk.greenBright(`[SYNC] Đã thêm mới: ${remoteFile.name}`));
+  } catch (e) {
+    console.log(chalk.redBright(`[SYNC] Lỗi tải file ${remoteFile.name}: ${e.message}`));
+  }
+}
 
 async function syncOnlyAddNew(localDir, githubDir) {
   const REMOTE_LIST_URL = `https://api.github.com/repos/Kenne400k/k/contents/${githubDir}`;
   const RAW_PREFIX = `https://raw.githubusercontent.com/Kenne400k/k/main/${githubDir}/`;
+  const cacheFile = path.join(localDir, CACHE_SUFFIX);
+
   try {
     console.log(chalk.cyanBright(`[SYNC] Đang kiểm tra và đồng bộ file mới từ GitHub: ${githubDir}`));
     if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
+
+    // Lấy danh sách file remote
     const { data: remoteFiles } = await axios.get(REMOTE_LIST_URL, {
       headers: { 'User-Agent': 'mirai-bot-syncmodules' }
     });
     const remoteJsFiles = remoteFiles.filter(f => f.type === "file" && /\.(js|json|ts|cjs|mjs)$/i.test(f.name));
+
+    // Lấy danh sách file local hiện tại
     const localFiles = fs.readdirSync(localDir).filter(f => /\.(js|json|ts|cjs|mjs)$/i.test(f));
-    let countAdded = 0;
-    for (const remoteFile of remoteJsFiles) {
-      if (!localFiles.includes(remoteFile.name)) {
-        const { data: remoteContent } = await axios.get(RAW_PREFIX + remoteFile.name, { responseType: 'arraybuffer' });
-        fs.writeFileSync(path.join(localDir, remoteFile.name), Buffer.from(remoteContent));
-        console.log(chalk.greenBright(`[SYNC] Đã thêm mới: ${remoteFile.name}`));
-        countAdded++;
+
+    // Lấy cache lần trước (dùng nhận diện file đã từng có)
+    const cachedFiles = readCache(cacheFile);
+
+    // Những file trên GitHub mà local không có
+    const missingFiles = remoteJsFiles.filter(f => !localFiles.includes(f.name));
+
+    // Tách file hoàn toàn mới và file đã từng có (bị xóa local)
+    const newFiles = missingFiles.filter(f => !cachedFiles.includes(f.name));
+    const deletedFiles = missingFiles.filter(f => cachedFiles.includes(f.name));
+
+    // Nếu tổng số file mới > 10 thì hỏi ý kiến 1 lần
+    if (missingFiles.length > 10) {
+      console.log(chalk.yellowBright(`[SYNC] Có ${missingFiles.length} lệnh mới (bao gồm ${deletedFiles.length} lệnh đã từng có và ${newFiles.length} lệnh hoàn toàn mới). Bạn có muốn tải về không? (y/n)`));
+      process.stdin.setEncoding('utf8');
+      await new Promise(resolve => {
+        process.stdin.once('data', async (answer) => {
+          if (answer.trim().toLowerCase() === 'y') {
+            for (const remoteFile of missingFiles) {
+              await downloadAndSave(remoteFile, RAW_PREFIX, localDir);
+            }
+            console.log(chalk.greenBright(`[SYNC] Đã đồng bộ xong ${missingFiles.length} file mới từ ${githubDir}.`));
+          } else {
+            console.log(chalk.yellowBright(`[SYNC] Bỏ qua việc tải lệnh mới.`));
+          }
+          resolve();
+        });
+      });
+    } else {
+      // Tải tự động các file hoàn toàn mới
+      for (const remoteFile of newFiles) {
+        await downloadAndSave(remoteFile, RAW_PREFIX, localDir);
+      }
+      // Với các file đã từng có mà bị xóa local, hỏi từng file có muốn tải lại không
+      for (const remoteFile of deletedFiles) {
+        console.log(chalk.yellowBright(`[SYNC] File "${remoteFile.name}" đã từng có ở local nhưng bạn đã xóa. Bạn có muốn tải lại không? (y/n)`));
+        process.stdin.setEncoding('utf8');
+        await new Promise(resolve => {
+          process.stdin.once('data', async (answer) => {
+            if (answer.trim().toLowerCase() === 'y') {
+              await downloadAndSave(remoteFile, RAW_PREFIX, localDir);
+            } else {
+              console.log(chalk.yellowBright(`[SYNC] Bỏ qua: ${remoteFile.name}`));
+            }
+            resolve();
+          });
+        });
+      }
+      if (missingFiles.length === 0) {
+        console.log(chalk.yellowBright(`[SYNC] Không có file mới nào trong ${githubDir}.`));
+      } else {
+        console.log(chalk.greenBright(`[SYNC] Đã đồng bộ xong ${newFiles.length} file mới từ ${githubDir}.`));
       }
     }
-    if (countAdded === 0) {
-      console.log(chalk.yellowBright(`[SYNC] Không có file mới nào trong ${githubDir}.`));
-    } else {
-      console.log(chalk.greenBright(`[SYNC] Đã đồng bộ xong ${countAdded} file mới từ ${githubDir}.`));
-    }
+
+    // Ghi lại cache trạng thái các file sau khi sync để lần sau nhận diện
+    writeCache(cacheFile, Array.from(new Set([...localFiles, ...missingFiles.map(f => f.name)])));
   } catch (err) {
     console.log(chalk.redBright(`[SYNC] Lỗi đồng bộ ${githubDir}: ${err.message}`));
   }
@@ -92,7 +168,7 @@ async function syncModulesAndEvents() {
   );
 
   // Kiểm tra phiên bản
-  const LOCAL_VERSION = "3.0.0";
+  const LOCAL_VERSION = "4.0.0";
   const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/main/index.js";
   console.log(chalk.cyanBright(`[AUTO-UPDATE] Kiểm tra phiên bản trên GitHub...`));
   try {
