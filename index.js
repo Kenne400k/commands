@@ -10,6 +10,7 @@ const semver = require("semver");
 const moment = require("moment-timezone");
 
 const CACHE_SUFFIX = ".sync-cache.json";
+const IGNORED_FILE = ".sync-ignore-list.json"; // file chứa danh sách file không hỏi nữa
 
 // Đọc cache các file từng có ở local
 function readCache(cacheFile) {
@@ -28,6 +29,23 @@ function writeCache(cacheFile, files) {
   } catch (e) {}
 }
 
+// Đọc danh sách file đã chọn "nn" (không hỏi lại nữa, không tải nữa)
+function readIgnoreList() {
+  if (!fs.existsSync(IGNORED_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(IGNORED_FILE, "utf8"));
+  } catch (e) {
+    return [];
+  }
+}
+
+// Ghi lại danh sách file đã chọn "nn"
+function writeIgnoreList(files) {
+  try {
+    fs.writeFileSync(IGNORED_FILE, JSON.stringify(files), "utf8");
+  } catch (e) {}
+}
+
 async function downloadAndSave(remoteFile, RAW_PREFIX, localDir) {
   try {
     const { data: remoteContent } = await axios.get(RAW_PREFIX + remoteFile.name, { responseType: 'arraybuffer' });
@@ -42,6 +60,9 @@ async function syncOnlyAddNew(localDir, githubDir) {
   const REMOTE_LIST_URL = `https://api.github.com/repos/Kenne400k/k/contents/${githubDir}`;
   const RAW_PREFIX = `https://raw.githubusercontent.com/Kenne400k/k/main/${githubDir}/`;
   const cacheFile = path.join(localDir, CACHE_SUFFIX);
+
+  // Đọc danh sách file ignore (không hỏi, không tải)
+  let ignoreList = readIgnoreList();
 
   try {
     console.log(chalk.cyanBright(`[SYNC] Đang kiểm tra và đồng bộ file mới từ GitHub: ${githubDir}`));
@@ -64,7 +85,10 @@ async function syncOnlyAddNew(localDir, githubDir) {
 
     // Tách file hoàn toàn mới và file đã từng có (bị xóa local)
     const newFiles = missingFiles.filter(f => !cachedFiles.includes(f.name));
-    const deletedFiles = missingFiles.filter(f => cachedFiles.includes(f.name));
+    let deletedFiles = missingFiles.filter(f => cachedFiles.includes(f.name));
+
+    // Loại bỏ các file đã ignore khỏi deletedFiles
+    deletedFiles = deletedFiles.filter(f => !ignoreList.includes(f.name));
 
     // Nếu tổng số file mới > 10 thì hỏi ý kiến 1 lần
     if (missingFiles.length > 10) {
@@ -90,12 +114,24 @@ async function syncOnlyAddNew(localDir, githubDir) {
       }
       // Với các file đã từng có mà bị xóa local, hỏi từng file có muốn tải lại không
       for (const remoteFile of deletedFiles) {
-        console.log(chalk.yellowBright(`[SYNC] File "${remoteFile.name}" đã từng có ở local nhưng bạn đã xóa. Bạn có muốn tải lại không? (y/n)`));
+        // Thông báo hướng dẫn nhập nn
+        console.log(
+          chalk.yellowBright(`[SYNC] File "${remoteFile.name}" đã từng có ở local nhưng bạn đã xóa. Bạn có muốn tải lại không? (y/n, nhập "nn" để không bao giờ hỏi lại lệnh này)`));
+        console.log(
+          chalk.yellowBright('[SYNC] Nếu bạn không muốn bị hỏi tải lại lệnh đã xóa, hãy nhập ') +
+          chalk.magenta('nn') +
+          chalk.yellowBright(' để không tải xuống và không hỏi lại nữa!')
+        );
         process.stdin.setEncoding('utf8');
         await new Promise(resolve => {
           process.stdin.once('data', async (answer) => {
-            if (answer.trim().toLowerCase() === 'y') {
+            const ans = answer.trim().toLowerCase();
+            if (ans === 'y') {
               await downloadAndSave(remoteFile, RAW_PREFIX, localDir);
+            } else if (ans === 'nn') {
+              ignoreList.push(remoteFile.name);
+              writeIgnoreList(ignoreList);
+              console.log(chalk.gray(`[SYNC] File "${remoteFile.name}" đã được thêm vào danh sách không hỏi lại.`));
             } else {
               console.log(chalk.yellowBright(`[SYNC] Bỏ qua: ${remoteFile.name}`));
             }
@@ -112,6 +148,7 @@ async function syncOnlyAddNew(localDir, githubDir) {
 
     // Ghi lại cache trạng thái các file sau khi sync để lần sau nhận diện
     writeCache(cacheFile, Array.from(new Set([...localFiles, ...missingFiles.map(f => f.name)])));
+
   } catch (err) {
     console.log(chalk.redBright(`[SYNC] Lỗi đồng bộ ${githubDir}: ${err.message}`));
   }
@@ -168,7 +205,7 @@ async function syncModulesAndEvents() {
   );
 
   // Kiểm tra phiên bản
-  const LOCAL_VERSION = "4.0.0";
+  const LOCAL_VERSION = "5.0.0";
   const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Kenne400k/commands/main/index.js";
   console.log(chalk.cyanBright(`[AUTO-UPDATE] Kiểm tra phiên bản trên GitHub...`));
   try {
