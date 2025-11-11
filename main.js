@@ -337,52 +337,32 @@ function onBot({ models: botModel }) {
 
 (async () => {
     try {
-        //==================================================================================//
-        // 💻 LOGIC KIỂM TRA CẬP NHẬT 💻
-        //==================================================================================//
         try {
-            logger("Đang kiểm tra phiên bản...", "[ UPDATE ]");
-            
-            // 1. Lấy nội dung file main.js (dạng text) từ GitHub
             const { data: githubMainJsRaw } = await axios.get(GITHUB_MAIN_JS_URL, {
-                headers: { 'Cache-Control': 'no-cache' } // Đảm bảo luôn lấy file mới nhất
+                headers: { 'Cache-Control': 'no-cache' }
             });
-            
-            // 2. Dùng Regex để tìm dòng "const localVersion = "..." trong file tải về
             const githubVersionMatch = githubMainJsRaw.match(/const localVersion = "([^"]+)"/);
             
             if (!githubVersionMatch || !githubVersionMatch[1]) {
                 logger("Không thể tìm thấy version trong file main.js trên GitHub. Bỏ qua...", "warn");
             } else {
                 const githubVersion = githubVersionMatch[1].trim();
-                logger(`Phiên bản hiện tại: ${localVersion} | Phiên bản GitHub: ${githubVersion}`, "[ UPDATE ]");
-
-                // 3. So sánh phiên bản
+                logger(`${localVersion} ${githubVersion}`, "[ UPDATE ]");
                 if (localVersion.trim() !== githubVersion) {
-                    // 4. Nếu phiên bản khác, ghi đè file main.js hiện tại
-                    // (Mày đã có sẵn nội dung file trong biến 'githubMainJsRaw')
-                    logger(`Phát hiện phiên bản mới: ${githubVersion}. Đang tải về...`, "[ UPDATE ]");
+                    logger(`${githubVersion}`, "[ UPDATE ]");
                     
                     writeFileSync(__filename, githubMainJsRaw, 'utf8');
-                    logger("Cập nhật file main.js thành công!", "[ UPDATE ]");
-
-                    // 5. Thoát ra để restart
-                    logger("Vui lòng khởi động lại bot để áp dụng cập nhật.", "warn");
-                    process.exit(0); // Tự động thoát để restart (nếu mày dùng pm2)
+                    logger("Cập nhật thành công!", "[ UPDATE ]");
+                logger("Vui lòng khởi động lại bot để áp dụng cập nhật.", "warn");
+                    process.exit(0);
                 } else {
-                    logger("Phiên bản đã là mới nhất.", "[ UPDATE ]");
+                    logger("[][][][][][][][]", "[ UPDATE ]");
                 }
             }
         } catch (error) {
             logger(`Lỗi khi kiểm tra cập nhật: ${error.message}`, "error");
             logger("Bỏ qua cập nhật và tiếp tục khởi động...", "warn");
         }
-        //==================================================================================//
-        // KẾT THÚC LOGIC CẬP NHẬT
-        //==================================================================================//
-
-        // Code cũ của mày: Kết nối database và khởi động bot
-        // Nó sẽ chỉ chạy nếu không có cập nhật
         try {
             global.client.loggedMongoose = true;
             const { Model, DataTypes, Sequelize } = require("sequelize");
