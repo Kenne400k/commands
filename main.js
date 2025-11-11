@@ -13,18 +13,10 @@ const login = require("./includes/fca");
 const axios = require("axios");
 const listPackage = JSON.parse(readFileSync('./package.json')).dependencies;
 const listbuiltinModules = require("module").builtinModules;
-
-//==================================================================================//
-// ⚠️ THAY THÔNG TIN CỦA MÀY VÀO ĐÂY ⚠️
-const localVersion = "2.7.12"; // ⬅️ Phiên bản của file main.js này
-const GITHUB_REPO_OWNER = "Kenne400k"; // ⬅️ Thay tên user/tổ chức
-const GITHUB_REPO_NAME = "commands"; // ⬅️ Thay tên repo
-
-// ⚠️ CÁC LINK ĐỂ KIỂM TRA VÀ TẢI VỀ (CHỈ CẦN 1 LINK) ⚠️
+const localVersion = "2.7.12";
+const GITHUB_REPO_OWNER = "Kenne400k";
+const GITHUB_REPO_NAME = "commands";
 const GITHUB_MAIN_JS_URL = `https://raw.githubusercontent.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/main/main.js`;
-//==================================================================================//
-
-
 global.client = new Object({
     commands: new Map(),
     events: new Map(),
